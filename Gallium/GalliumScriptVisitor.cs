@@ -1,7 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using System.IO.Enumeration;
-using System.Net.Mime;
-using Antlr4.Runtime;
+﻿using Antlr4.Runtime;
 using Gallium.AbstractSyntaxTree;
 using Gallium.Types;
 
@@ -11,8 +8,7 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
 {
     private readonly SymbolTable _symbolTable;
     private readonly TypeRegistry _typeRegistry;
-
-    private Stack<string> typeNameStack = new Stack<string>();
+    private readonly Stack<string> _typeNameStack = new();
 
     public GalliumScriptVisitor(TypeRegistry typeRegistry, SymbolTable symbolTable)
     {
@@ -23,8 +19,9 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
         _typeRegistry.AddType("int", new TypeInfo("int"));
         _typeRegistry.AddType("double", new TypeInfo("double"));
         _typeRegistry.AddType("string", new TypeInfo("string"));
+        _typeRegistry.AddType("none", new TypeInfo("none"));
 
-        typeNameStack.Push("global");
+        _typeNameStack.Push("global");
     }
 
     public override ASTNode VisitFunctionDeclaration(GalliumScriptParser.FunctionDeclarationContext context)
@@ -33,25 +30,41 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
 
         if (_symbolTable.ResolveSymbol(name) != null)
         {
-            return base.VisitFunctionDeclaration(context);
+            return OnError(context, $"Duplicate function found {name}");
         }
 
-        var type = context.type().GetText();
+        var functionReturnType = context.type().GetText();
+        var functionReturnTypeInfo = _typeRegistry.GetType(functionReturnType);
 
-        _symbolTable.DefineSymbol(name, new TypeInfo(name));
+        if (functionReturnTypeInfo == null)
+        {
+            return OnError(context, $"Could not find type {functionReturnType}");
+        }
+
+        var typeInfo = _typeRegistry.GetType(_typeNameStack.Peek());
+        if (typeInfo == null)
+        {
+            return OnError(context, $"Invalid type {_typeNameStack.Peek()}");
+        }
+
+        _symbolTable.DefineSymbol(name, typeInfo);
 
         // everything defined from this point should be in a new scope for the function
         _symbolTable.EnterScope();
 
         var parameters = new List<SymbolInfo>();
-        foreach (var parameterDecl in context.functionParametersDecl()
-                     .functionParameterDecl())
-        {
-            var parameterType = GetTypeFromString(parameterDecl.type().GetText());
 
-            if (parameterType != null)
+        if (context.functionParametersDecl()?.functionParameterDecl() != null)
+        {
+            foreach (var parameterDecl in context.functionParametersDecl()
+                         .functionParameterDecl())
             {
-                parameters.Add(new SymbolInfo(parameterDecl.IDENTIFIER().GetText(), parameterType));
+                var parameterType = GetTypeFromString(parameterDecl.type().GetText());
+
+                if (parameterType != null)
+                {
+                    parameters.Add(new SymbolInfo(parameterDecl.IDENTIFIER().GetText(), parameterType));
+                }
             }
         }
 
@@ -64,27 +77,29 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
 
         _symbolTable.ExitScope();
 
-        // put block somewhere
-        var typeInfo = _typeRegistry.GetType(typeNameStack.Peek());
+        typeInfo = _typeRegistry.GetType(_typeNameStack.Peek());
         if (typeInfo == null)
         {
             // handle error
-            return OnError(context, "Could not find basetype.");
+            return OnError(context, "Could not find base type.");
         }
 
-        typeInfo.Methods.Add(name, new MethodInfo(name, GetTypeFromString(type), parameters, false));
-        return new FunctionDeclarationNode(name, typeInfo, block);
+        if (typeInfo.Methods.ContainsKey(name))
+        {
+            return OnError(context, $"Duplicate method found {name}");
+        }
+
+
+        typeInfo.Methods.Add(name, new MethodInfo(typeInfo.Name, name, functionReturnTypeInfo, parameters, false));
+        return new FunctionDeclarationNode(name, typeInfo, functionReturnTypeInfo, block);
     }
 
     public override ASTNode VisitIdentifierExpression(GalliumScriptParser.IdentifierExpressionContext context)
     {
         var symbol = _symbolTable.ResolveSymbol(context.IDENTIFIER().GetText());
-        if (symbol == null)
-        {
-            return OnError(context, $"Symbol not found: {symbol}");
-        }
-
-        return new IdentifierExpressionNode(context.IDENTIFIER().GetText(), symbol);
+        return symbol == null ? 
+            OnError(context, $"Symbol not found: {symbol}") 
+            : new IdentifierExpressionNode(context.IDENTIFIER().GetText(), symbol);
     }
 
     public override ASTNode VisitParenthesizedExpression(GalliumScriptParser.ParenthesizedExpressionContext context)
@@ -111,7 +126,7 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
         _typeRegistry.AddType(className, typeInfo);
 
         // now we have to build the type
-        typeNameStack.Push(className);
+        _typeNameStack.Push(className);
 
         _symbolTable.EnterScope();
 
@@ -122,18 +137,22 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
         var bodyDeclarations = context.classBodyDeclaration()
             .Select(Visit)
             .ToList();
-        
 
         _symbolTable.ExitScope();
-        typeNameStack.Pop();
+        _typeNameStack.Pop();
 
         return new ClassDeclarationNode(constructorList, bodyDeclarations);
     }
 
     public override ASTNode VisitNewObjectExpression(GalliumScriptParser.NewObjectExpressionContext context)
     {
-        var arguments = Visit(context.argumentList());
-        return new NewObjectNode(arguments);
+        if (context.argumentList() != null)
+        {
+            var arguments = Visit(context.argumentList());
+            return new NewObjectNode(arguments);
+        }
+
+        return new NewObjectNode();
     }
 
     public override ASTNode VisitBlock(GalliumScriptParser.BlockContext context)
@@ -200,15 +219,33 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
     {
         var functionName = context.IDENTIFIER().GetText();
 
-        if (_symbolTable.ResolveSymbol(functionName) == null)
+        var symbol = _symbolTable.ResolveSymbol(functionName);
+        if (symbol == null)
         {
             throw new Exception($"Symbol not found '{functionName}'");
         }
 
-       
-        var arguments = Visit(context.argumentList()) as ArgumentListNode;
+        var containingType = _typeRegistry.GetType(symbol.Type.Name);
+        if (containingType == null)
+        {
+            return OnError(context, $"Could not find {symbol.Type.Name} in registry.");
+        }
 
-        return new FunctionCallNode(functionName, arguments?.ExpressionNodes);
+        var methodInfo = containingType.Methods
+            .Where(p => p.Key == functionName)
+            .Select(p => p.Value)
+            .FirstOrDefault();
+
+        if (methodInfo == null)
+        {
+            return OnError(context, $"Method {functionName} not found on type {symbol.Type.Name}");
+        }
+
+        if (context.argumentList() == null) return new FunctionCallNode(functionName, methodInfo, null);
+
+        var arguments = Visit(context.argumentList()) as ArgumentListNode;
+        return new FunctionCallNode(functionName, methodInfo, arguments?.ExpressionNodes);
+
     }
 
     public override ASTNode VisitIntegerLiteral(GalliumScriptParser.IntegerLiteralContext context)
@@ -225,7 +262,7 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
     public override ASTNode VisitStringLiteral(GalliumScriptParser.StringLiteralContext context)
     {
         var text = context.STRING_LITERAL().GetText();
-        return new StringConstantNode(text.Substring(1, text.Length - 2));
+        return new StringConstantNode(text[1..^1]);
     }
 
     public override ASTNode VisitLiteralConstantExpression(GalliumScriptParser.LiteralConstantExpressionContext context)
@@ -238,58 +275,106 @@ public class GalliumScriptVisitor : GalliumScriptBaseVisitor<ASTNode>
         var left = Visit(context.expression()[0]);
         var right = Visit(context.expression()[1]);
 
-        return new BinaryExpressionNode(left, right);
+        return new BinaryExpressionNode(left, right, context.BINARY_OPERATOR().GetText());
     }
 
     public override ASTNode VisitMethodInvocationExpression(GalliumScriptParser.MethodInvocationExpressionContext context)
     {
         var expression = Visit(context.expression());
+        var methodName = context.IDENTIFIER().GetText();
 
-        if (expression is IdentifierExpressionNode identifier)
+        switch (expression)
         {
-            var symbol = _symbolTable.ResolveSymbol(identifier.SymbolInfo.Name);
-            if (symbol == null)
+            case IdentifierExpressionNode identifier:
             {
-                return OnError(context, $"Symbol not found {identifier.SymbolInfo.Name}");
-            }
+                var typeInfo = identifier.SymbolInfo.Type;
 
-            var typeInfo = _typeRegistry.GetType(symbol.Type.Name);
-            if (typeInfo == null)
+                // now find the method which matches this name.  We aren't allowing overloads, so no need to match signatures.
+                return !typeInfo.Methods.TryGetValue(methodName, out var methodInfo) ? 
+                    OnError(context, $"Could not find method {methodName} on type {typeInfo.Name}") 
+                    : new MethodInvocationNode(methodInfo);
+            }
+            case MethodInvocationNode mi:
             {
-                return OnError(context, $"Could not find type for {symbol.Type.Name}");
+                return !mi.MethodInfo.Type.Methods.TryGetValue(methodName, out var methodInfo) ? 
+                    OnError(context, $"Could not find method {methodName} on type {mi.MethodInfo.Type.Name}") 
+                    : new MethodInvocationNode(methodInfo);
             }
-
-            // now find the method which matches this name.  We aren't allowing overloads, so no need to match signatures.
-            if(!typeInfo.Methods.TryGetValue(symbol.Type.Name, out var methodInfo))
-            {
-                return OnError(context, $"Could not find method {symbol.Type.Name} on type {typeInfo.Name}");
-            }
-
-            return new MethodInvocationNode(identifier.Identifier, methodInfo.Type);
-
+            case FunctionCallNode fc:
+                // get type from function call node
+                return new MethodInvocationNode(fc.MethodInfo);
+            default:
+                return OnError(context, "Invalid expression");
         }
-        
-        if(expression is MethodInvocationNode mi)
-        {
-            // get return type
-            // then look up in registry
-
-            // find class in registry
-
-            // get type from method invocation
-            return new MethodInvocationNode("", new TypeInfo(""));
-        }
-
-        if (expression is FunctionCallNode fc)
-        {
-            // get type from function call node
-            return new MethodInvocationNode("", new TypeInfo(""));
-        }
-
-        return OnError(context, $"Invalid expression");
     }
 
-    private ASTNode OnError(ParserRuleContext ctx, string message)
+    public override ASTNode VisitBinaryConstantExpression(GalliumScriptParser.BinaryConstantExpressionContext context)
+    {
+        return base.VisitBinaryConstantExpression(context);
+    }
+
+    public override ASTNode VisitBitwiseConstantExpression(GalliumScriptParser.BitwiseConstantExpressionContext context)
+    {
+        return base.VisitBitwiseConstantExpression(context);
+    }
+
+    public override ASTNode VisitBitwiseExpression(GalliumScriptParser.BitwiseExpressionContext context)
+    {
+        return base.VisitBitwiseExpression(context);
+    }
+
+    public override ASTNode VisitBooleanLiteral(GalliumScriptParser.BooleanLiteralContext context)
+    {
+        return base.VisitBooleanLiteral(context);
+    }
+
+    public override ASTNode VisitConditionalOperationExpression(GalliumScriptParser.ConditionalOperationExpressionContext context)
+    {
+        return base.VisitConditionalOperationExpression(context);
+    }
+
+
+    public override ASTNode VisitForStmt(GalliumScriptParser.ForStmtContext context)
+    {
+        return base.VisitForStmt(context);
+    }
+
+
+    public override ASTNode VisitIfStmt(GalliumScriptParser.IfStmtContext context)
+    {
+        return base.VisitIfStmt(context);
+    }
+
+    public override ASTNode VisitWhileStmt(GalliumScriptParser.WhileStmtContext context)
+    {
+        return base.VisitWhileStmt(context);
+    }
+
+    public override ASTNode VisitSwitchStmt(GalliumScriptParser.SwitchStmtContext context)
+    {
+        return base.VisitSwitchStmt(context);
+    }
+
+    public override ASTNode VisitBreakStmt(GalliumScriptParser.BreakStmtContext context)
+    {
+        return new BreakStatementNode();
+    }
+
+
+    public override ASTNode VisitAssignmentExpression(GalliumScriptParser.AssignmentExpressionContext context)
+    {
+        var identifier = context.IDENTIFIER().GetText();
+
+        var symbolInfo = _symbolTable.ResolveSymbol(identifier);
+        if (symbolInfo == null)
+        {
+            return OnError(context, $"Invalid symbol {identifier}");
+        }
+
+        return new AssignmentNode(symbolInfo, Visit(context.expression()));
+    }
+
+    private static ASTNode OnError(ParserRuleContext ctx, string message)
     {
         return new ErrorNode(ctx.Start.Line, ctx.Start.Column, message);
     }

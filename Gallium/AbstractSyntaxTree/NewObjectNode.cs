@@ -4,9 +4,9 @@ namespace Gallium.AbstractSyntaxTree;
 
 public class NewObjectNode : ASTNode
 {
-    public ASTNode ArgumentListNode { get; }
+    public ASTNode? ArgumentListNode { get; }
 
-    public NewObjectNode(ASTNode argumentListNode)
+    public NewObjectNode(ASTNode? argumentListNode = null)
     {
         ArgumentListNode = argumentListNode;
     }

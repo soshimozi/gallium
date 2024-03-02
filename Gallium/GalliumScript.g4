@@ -37,7 +37,9 @@ statement					: exprStmt
 							| switchStmt
 							| block
 							| returnStmt
+							| breakStmt
 							;
+
 
 functionCall				: IDENTIFIER '(' argumentList? ')' ;
 
@@ -47,9 +49,15 @@ exprStmt					: expression ';' ;
 printStmt					: 'print' expression ';' ;
 ifStmt						: 'if' '(' expression ')' statement ('else' statement)? ;
 whileStmt					: 'while' '(' expression ')' statement ;
-forStmt						: 'for' '(' varDeclaration? ';' expression? ';' expression? ')' statement;
+forStmt						: 'for' '(' forInitializer? ';' expression? ';' expression? ')' statement;
 
-returnStmt : 'return' expression? ';' ;
+forInitializer				: 'var' IDENTIFIER ':' type ('=' expression)?		# VarInitializer
+							| IDENTIFIER '=' expression							# IdentifierInitializer
+							;
+
+breakStmt					: 'break' ';' ;
+
+returnStmt					: 'return' expression? ';' ;
 
 expression					: expression BINARY_OPERATOR expression				# BinaryOperationExpression
 							| expression CONDITIONAL_OPERATOR expression		# ConditionalOperationExpression
@@ -63,12 +71,21 @@ expression					: expression BINARY_OPERATOR expression				# BinaryOperationExpre
 							| IDENTIFIER										# IdentifierExpression
 							| functionCall										# FunctionCallExpression
 							| literal											# LiteralExpression
+							| IDENTIFIER ASSIGNMENT_OPERATOR expression			# AssignmentExpression
+							| expression '++'									# IncrementExpression
+							| expression '--'									# DecrementExpression
 							;
 
+switchStmt  : 'switch' '(' expression ')' '{' switchCaseBlock* '}' ;
 
-switchStmt					: 'switch' '(' expression ')' '{' switchBlockStatementGroups? switchLabel* '}' ;
+switchCaseBlock : switchLabel blockStatements? ;
 
-switchBlockStatementGroups	: switchLabel+ block ;
+blockStatements : blockStatement+ ;
+
+blockStatement  : declaration
+                | statement
+                | switchLabel    // This allows another case label to follow directly after a block
+                ;
 
 switchLabel					: 'case' constantExpression ':'
 							| 'default' ':'
@@ -89,10 +106,11 @@ literal						: INT_LITERAL		# IntegerLiteral
 							| STRING_LITERAL	# StringLiteral
 							;
 // Lexer rules
+ASSIGNMENT_OPERATOR			: '=' | '+=' | '-=';
 NEW                         : 'new' ;
 BITWISE_OPERATOR			: '>>' | '<<' | '~';
 BINARY_OPERATOR				: '*' | '/' | '+' | '-' ;
-CONDITIONAL_OPERATOR		: '==' | '!=' | '<' | '<=' | '>' | '<=' ;
+CONDITIONAL_OPERATOR		: '==' | '!=' | '<' | '<=' | '>' | '>=' ;
 LOGICAL_OPERATOR			: '&&' | '||' ;
 
 IDENTIFIER					: [a-zA-Z_][a-zA-Z_0-9]* ;

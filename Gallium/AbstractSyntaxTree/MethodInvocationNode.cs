@@ -4,12 +4,10 @@ namespace Gallium.AbstractSyntaxTree;
 
 public class MethodInvocationNode : ASTNode
 {
-    public string MethodName { get; set; }
-    public TypeInfo ReturnType { get; set; }
+    public MethodInfo MethodInfo { get; set; }
 
-    public MethodInvocationNode(string methodName, TypeInfo returnType)
+    public MethodInvocationNode(MethodInfo methodInfo)
     {
-        MethodName = methodName;
-        ReturnType = returnType;
+        MethodInfo = methodInfo;
     }
 }
