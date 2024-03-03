@@ -1,6 +1,6 @@
 ﻿using Antlr4.Runtime;
 using Gallium;
-using Gallium.Types;
+//using Gallium.Types;
 
 namespace GallliumDriver
 {
@@ -34,11 +34,14 @@ namespace GallliumDriver
                 return;
             }
 
-            var registry = new TypeRegistry();
-            var symbolTable = new SymbolTable();
-
-            var visitor = new GalliumScriptVisitor(registry, symbolTable);
+            var visitor = new GalliumScriptVisitor();
             var program = visitor.Visit(programTree);
+
+            //var registry = new TypeRegistry();
+            //var symbolTable = new SymbolTable();
+
+            //var visitor = new GalliumScriptVisitor(registry, symbolTable);
+            //var program = visitor.Visit(programTree);
         }
 
         static void Main(string[] args)
@@ -51,8 +54,6 @@ namespace GallliumDriver
         public void OnSyntaxError(int line, int col, string msg, RecognitionException e)
         {
             _errors.Add(msg);
-
-            //Console.WriteLine($"Error at {line}:{col} - {msg}");
         }
     }
 }

@@ -19,8 +19,4 @@
     <PackageReference Include="Antlr4BuildTasks" Version="12.8.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="AbstractSyntaxTree\" />
-  </ItemGroup>
-
 </Project>

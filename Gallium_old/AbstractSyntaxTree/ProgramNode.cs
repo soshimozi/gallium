@@ -2,7 +2,7 @@
 
 public class ProgramNode : ASTNode
 {
-    public List<ASTNode> Declarations { get; }
+    public List<ASTNode> Declarations { get; set; }
 
     public ProgramNode(List<ASTNode> declarations)
     {

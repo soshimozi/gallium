@@ -8,13 +8,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Gallium\Gallium.csproj" />
+    <Compile Remove="GalliumScriptVisitor.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="test.gs">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    <None Remove="GalliumScript.g4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Gallium\Gallium.csproj" />
+    <ProjectReference Include="..\Gallium\Gallium_Old.csproj" />
   </ItemGroup>
 
 </Project>
