@@ -11,8 +11,12 @@ declaration					: classDeclaration
 							| statement
 							;
 
-classDeclaration            : 'class' IDENTIFIER '{' constructorDeclaration* classBodyDeclaration* '}' ;
-constructorDeclaration      : '__' '(' functionParametersDecl? ')' block ;
+classDeclaration            : 'class' IDENTIFIER (':' IDENTIFIER)?  '{' constructorDeclaration* classBodyDeclaration* '}' ;
+constructorDeclaration      : '__' '(' functionParametersDecl? ')' '__' constructorBody ;
+constructorBody				: '{' superConstructorCall? (declaration | statement)* '}' ;
+
+superConstructorCall		: 'super' '(' argumentList? ')' ';' ;
+
 classBodyDeclaration		: ( 'private' )? (functionDeclaration | varDeclaration) ;
 functionDeclaration			: 'function' IDENTIFIER	'(' functionParametersDecl? ')' ':' type block ;
 functionParametersDecl		: functionParameterDecl (',' functionParameterDecl)* ;
@@ -61,6 +65,7 @@ returnStmt					: 'return' expression? ';' ;
 
 expression					: expression BINARY_OPERATOR expression				# BinaryOperationExpression
 							| expression CONDITIONAL_OPERATOR expression		# ConditionalOperationExpression
+							| 'super' '.' IDENTIFIER '(' argumentList? ')'		# SuperMethodInvocationExpression
 							| expression '.' IDENTIFIER '(' argumentList? ')'   # MethodInvocationExpression
 							| 'new' '(' argumentList? ')'						# NewObjectExpression
 							| expression LOGICAL_OPERATOR						# LogicalOperationExpression
@@ -75,6 +80,14 @@ expression					: expression BINARY_OPERATOR expression				# BinaryOperationExpre
 							| expression '++'									# IncrementExpression
 							| expression '--'									# DecrementExpression
 							;
+
+//methodInvocation : superMethodCall | generalMethodCall ;
+
+//superMethodCall : 'super' '.' IDENTIFIER '(' argumentList? ')' ;
+
+//generalMethodCall : expression '.' IDENTIFIER '(' argumentList? ')' ;
+
+//superCall	: 'super' '.' IDENTIFIER '(' argumentList? ')' ;
 
 switchStmt  : 'switch' '(' expression ')' '{' switchCaseBlock* '}' ;
 
@@ -120,6 +133,8 @@ BOOL_LITERAL				: 'true' | 'false' ;
 STRING_LITERAL				: '"' ( ~["\\] | '\\' . )* '"' ;  // Simplified string literals
 UNARY_OPERATOR				: '-' | '+' ;
 
+SUPER						: 'super' ;
+EXTENDS						: 'extends' ;
 
 WS							: [ \t\r\n]+ -> skip ;
 DIGIT						: [0-9] ;

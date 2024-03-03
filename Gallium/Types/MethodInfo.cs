@@ -6,11 +6,11 @@ public class MethodInfo
     public TypeInfo Type { get; set; }
     public List<SymbolInfo> Parameters { get; set; }
     public bool IsPrivate { get; set; }
-    public string ClassName { get; set; }
+    public TypeInfo ContainerType { get; set; }
 
-    public MethodInfo(string className, string methodName, TypeInfo type, List<SymbolInfo> parameters, bool isPrivate)
+    public MethodInfo(TypeInfo typeInfo, string methodName, TypeInfo type, List<SymbolInfo> parameters, bool isPrivate)
     {
-        ClassName = className;
+        ContainerType = typeInfo;
         MethodName = methodName;
         Type = type;
         Parameters = parameters;
