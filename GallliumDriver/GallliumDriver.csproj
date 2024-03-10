@@ -17,7 +17,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Gallium\Gallium.csproj" />
-    <ProjectReference Include="..\Gallium\Gallium_Old.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="test.gs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

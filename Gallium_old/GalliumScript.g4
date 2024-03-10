@@ -1,73 +1,144 @@
-﻿grammar GalliumScript ;
+﻿﻿grammar GalliumScript ;
 
-program             : declaration* EOF ;
+// Parser rules
 
-declaration         : classDecl
-                    | funDecl
-                    | varDecl
-                    | statement 
-                    ;
+program						: declaration* EOF ;
 
-classDecl           : 'class' IDENTIFIER ('<' IDENTIFIER)? '{' function* '}' ;
-funDecl             : 'fun' function ;
-varDecl             : 'var' IDENTIFIER ('=' expression)? ';' ;
 
-statement           : exprStmt
-                    | forStmt
-                    | ifStmt
-                    | printStmt
-                    | returnStmt
-                    | whileStmt
-                    | block 
-                    ;
+declaration					: classDeclaration
+							| functionDeclaration
+							| varDeclaration
+							| statement
+							;
 
-exprStmt            : expression ';' ;
-forStmt             : 'for' '(' (varDecl | exprStmt | ';') expression? ';' expression? ')' statement ;
-ifStmt              : 'if' '(' expression ')' statement ('else' statement)? ;
-printStmt           : 'print' expression ';' ;
-returnStmt          : 'return' expression? ';' ;
-whileStmt           : 'while' '(' expression ')' statement ;
-block               : '{' declaration* '}' 
-                    ;
+classDeclaration            : 'class' IDENTIFIER (':' IDENTIFIER)?  '{' constructorDeclaration* classBodyDeclaration* '}' ;
+constructorDeclaration      : '__' '(' functionParametersDecl? ')' '__' constructorBody ;
+constructorBody				: '{' superConstructorCall? (declaration | statement)* '}' ;
 
-expression          : assignment ;
-assignment          : (call '.')? IDENTIFIER '=' assignment
-                    | logic_or 
-                    ;
+superConstructorCall		: 'super' '(' argumentList? ')' ';' ;
 
-logic_or            : logic_and ('or' logic_and)* ;
-logic_and           : equality ('and' equality)* ;
-equality            : comparison (('!=' | '==') comparison)* ;
-comparison          : term (('>' | '>=' | '<' | '<=') term)* ;
-term                : factor (('-' | '+') factor)* ;
-factor              : unary (('/' | '*') unary)* ;
+classBodyDeclaration		: ( 'private' )? (functionDeclaration | varDeclaration) ;
+functionDeclaration			: 'function' IDENTIFIER	'(' functionParametersDecl? ')' ':' type block ;
+functionParametersDecl		: functionParameterDecl (',' functionParameterDecl)* ;
+functionParameterDecl		: IDENTIFIER ':' type  ;
 
-unary               : ('!' | '-') unary | call ;
-call                : primary ('(' arguments? ')' | '.' IDENTIFIER)* ;
-primary             : 'true' 
-                    | 'false' 
-                    | 'nil' 
-                    | 'this'
-                    | NUMBER 
-                    | STRING 
-                    | IDENTIFIER 
-                    | '(' expression ')'
-                    | 'super' '.' IDENTIFIER 
-                    ;
+varDeclaration				: 'var' IDENTIFIER ':' type ('=' expression)? ';' ;
 
-function            : IDENTIFIER '(' parameters? ')' block ;
-parameters          : IDENTIFIER (',' IDENTIFIER)* ;
-arguments           : expression (',' expression)* ;
+type						: 'int'
+							| 'double'
+							| 'bool'
+							| 'string'
+							| IDENTIFIER // for user-defined types e.g., classes
+							;
 
-// Lexer Rules
+block						: '{' declaration* '}' ;
 
-IDENTIFIER          : [a-zA-Z_][a-zA-Z_0-9]* ;
-NUMBER              : DIGIT+ ('.' DIGIT+)? ;
-STRING              : '"' ( ~["\\"] | '\\' . )* '"' ;
-DIGIT               : [0-9] ;
+statement					: exprStmt
+							| printStmt
+							| ifStmt
+							| whileStmt
+							| forStmt
+							| switchStmt
+							| block
+							| returnStmt
+							| breakStmt
+							;
 
-// Skip spaces, tabs, and newlines
-WS                  : [ \t\r\n]+ -> skip ;
+
+functionCall				: IDENTIFIER '(' argumentList? ')' ;
+
+argumentList				: expression (',' expression)* ;
+
+exprStmt					: expression ';' ;
+printStmt					: 'print' expression ';' ;
+ifStmt						: 'if' '(' expression ')' statement ('else' statement)? ;
+whileStmt					: 'while' '(' expression ')' statement ;
+forStmt						: 'for' '(' forInitializer? ';' expression? ';' expression? ')' statement;
+
+forInitializer				: 'var' IDENTIFIER ':' type ('=' expression)?		# VarInitializer
+							| IDENTIFIER '=' expression							# IdentifierInitializer
+							;
+
+breakStmt					: 'break' ';' ;
+
+returnStmt					: 'return' expression? ';' ;
+
+expression					: expression BINARY_OPERATOR expression				# BinaryOperationExpression
+							| expression CONDITIONAL_OPERATOR expression		# ConditionalOperationExpression
+							| 'super' '.' IDENTIFIER '(' argumentList? ')'		# SuperMethodInvocationExpression
+							| expression '.' IDENTIFIER '(' argumentList? ')'   # MethodInvocationExpression
+							| 'new' '(' argumentList? ')'						# NewObjectExpression
+							| expression LOGICAL_OPERATOR						# LogicalOperationExpression
+							| expression '?' expression ':' expression			# TernaryExpression
+							| expression BITWISE_OPERATOR expression			# BitwiseExpression
+							| '!' expression									# LogicalNotExpression
+							| '(' expression ')'								# ParenthesizedExpression
+							| IDENTIFIER										# IdentifierExpression
+							| functionCall										# FunctionCallExpression
+							| literal											# LiteralExpression
+							| IDENTIFIER ASSIGNMENT_OPERATOR expression			# AssignmentExpression
+							| expression '++'									# IncrementExpression
+							| expression '--'									# DecrementExpression
+							;
+
+//methodInvocation : superMethodCall | generalMethodCall ;
+
+//superMethodCall : 'super' '.' IDENTIFIER '(' argumentList? ')' ;
+
+//generalMethodCall : expression '.' IDENTIFIER '(' argumentList? ')' ;
+
+//superCall	: 'super' '.' IDENTIFIER '(' argumentList? ')' ;
+
+switchStmt  : 'switch' '(' expression ')' '{' switchCaseBlock* '}' ;
+
+switchCaseBlock : switchLabel blockStatements? ;
+
+blockStatements : blockStatement+ ;
+
+blockStatement  : declaration
+                | statement
+                | switchLabel    // This allows another case label to follow directly after a block
+                ;
+
+switchLabel					: 'case' constantExpression ':'
+							| 'default' ':'
+							;
+
+constantExpression			: literal													# LiteralConstantExpression
+							| constantExpression BINARY_OPERATOR constantExpression		# BinaryConstantExpression
+							| constantExpression BITWISE_OPERATOR constantExpression	# BitwiseConstantExpression
+							| constantExpression LOGICAL_OPERATOR constantExpression	# LogicalConstantExpression
+							| '(' constantExpression ')'								# ParenthesisConstantExpression
+							| UNARY_OPERATOR constantExpression							# UnaryConstantExpression
+							;
+
+
+literal						: INT_LITERAL		# IntegerLiteral
+							| DOUBLE_LITERAL	# DoubleLiteral
+							| BOOL_LITERAL		# BooleanLiteral
+							| STRING_LITERAL	# StringLiteral
+							;
+// Lexer rules
+ASSIGNMENT_OPERATOR			: '=' | '+=' | '-=';
+NEW                         : 'new' ;
+BITWISE_OPERATOR			: '>>' | '<<' | '~';
+BINARY_OPERATOR				: '*' | '/' | '+' | '-' ;
+CONDITIONAL_OPERATOR		: '==' | '!=' | '<' | '<=' | '>' | '>=' ;
+LOGICAL_OPERATOR			: '&&' | '||' ;
+
+IDENTIFIER					: [a-zA-Z_][a-zA-Z_0-9]* ;
+INT_LITERAL					: DIGIT+ ;
+DOUBLE_LITERAL				: [0-9]+ '.' [0-9]* | '.' [0-9]+ ;
+BOOL_LITERAL				: 'true' | 'false' ;
+STRING_LITERAL				: '"' ( ~["\\] | '\\' . )* '"' ;  // Simplified string literals
+UNARY_OPERATOR				: '-' | '+' ;
+
+SUPER						: 'super' ;
+EXTENDS						: 'extends' ;
+
+WS							: [ \t\r\n]+ -> skip ;
+DIGIT						: [0-9] ;
+ESC							: '\\' [btnr"\\] ;
 
 // Single-line comments
 LINE_COMMENT : '//' ~[\r\n]* -> skip;

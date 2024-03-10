@@ -1,6 +1,6 @@
 ﻿namespace Gallium.AbstractSyntaxTree;
 
-public class ASTNode
+public abstract class ASTNode
 {
     
 }
